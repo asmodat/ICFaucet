@@ -1,10 +1,10 @@
 # AWSLauncher
 
-Deployment System Based on AWS Lambda, latest release can be found [here](https://github.com/asmodat/AWSLauncher/releases).
+Deployment System Based on AWS Lambda, latest release can be found [here](https://github.com/asmodat/ICFaucet/releases).
 
 ## Installing Debug Tools
 
-> https://github.com/aws/aws-lambda-dotnet/tree/master/Tools/LambdaTestTool
+> https://github.com/emgdev/lambda-local-runner
 
 ```
 dotnet tool install -g Amazon.Lambda.TestTool-2.1
@@ -45,13 +45,19 @@ Network -> depending on your security requirements
 > Environment variables
 
 ```
-parallelism: 1
-github_branch: master
-github_user: <username>
-github_token: <name_of_secret_token> 
-github_repository: <repo_name>
-#folder within github repository, e.g.
-instances_path: AWS/<region>/EC2/Instances
+MASTER_CHAT_ID: <Int64>
+MAX_PARALLELISM: 10
+MAX_MESSAGE_AGE: 86400 //seconds
+SECRET_NAME: <string> //secret manager, secret name
+test_connection: true //test internet connection
+<Token Name>_PROPS: { //custo
+ "denom":"muon",
+ "index":118,
+ "lcd":"https://lcd.gaia.bigdipper.live",
+ "amount":50000,
+ "gas":100000,
+ "fees":50000
+}
 ```
 
 > Function code
@@ -62,31 +68,23 @@ Runtime: .NET Core 2.1 (C#/PowerShell)
 Handler: AWSLauncher::AWSLauncher.Function::FunctionHandler
 ```
 
-## Example Deployment File
+## Example Use
 
-> placed in: `github.com/<username>/<repo_name>/AWS/<region>/EC2/Instances/config.json`
+> Join: `https://t.me/cosmosproject` or `https://t.me/kirainterex`
 
+> Post a message: `Give me $MUON cosmos1k5wrdtmd5ngqx4pngwtlmlahv8yz7gk2tccgqg`
+
+> Accepted Flags
 ```
-{
-    "enabled": true,
-    "name":"Example_instance",
-    "instanceType": "t3a.micro",
-    "imageId": "ami-xxxxxxxxxxxxxx",
-    "securityGroups": [ "Security_Group_Name" ],
-    "subnetId":"subnet-yyyyyyyyy",
-    "roleName": "Role_Name_To_Be_Assumed_By_Instance",
-    "key": "SSH_Key_Name",
-    "rootVolumeSize":16,
-    "restart": 0,
-    "redeploy": 0,
-    "terminate": false,
-    "shutdown": false,
-    "tags": [
-        { "key":"test", "value":"value" },
-        { "key":"test2", "value":"value2" }
-    ]
-}
+--lcd=<url>
+--network=<chain_id>
+--index=<coin_index> //
+--denom=<coin_denom>
 ```
+
+> Example explicit message: `Give me $muon cosmos1k5wrdtmd5ngqx4pngwtlmlahv8yz7gk2tccgqg --index=118 --lcd=https://lcd.gaia.bigdipper.live`
+
+> Coin indexes can be found [here](https://github.com/satoshilabs/slips/blob/master/slip-0044.md)
 
 ## Netowrking
 

@@ -11,6 +11,7 @@ using System.Threading;
 using AsmodatStandard.Extensions.Threading;
 using ICWrapper.Cosmos.CosmosHub.Models;
 using System.Collections.Concurrent;
+using AsmodatStandard.IO;
 
 namespace ICFaucet
 {
@@ -28,8 +29,8 @@ namespace ICFaucet
             if (m.From.IsBot == true || !(text?.ToLower()).StartsWith("give me $"))
                 return;
 
-            if (!await this.CheckMasterChatMembership(m))
-                return;
+            if (!await this.CheckMasterChatMembership(m)) return;
+            if (await GetDeposit(m)) return;
 
             var props = await GetTokenProps(m);
 
@@ -62,7 +63,7 @@ namespace ICFaucet
                 }
                 catch (Exception ex)
                 {
-
+                    _logger.Log($"[ERROR] => Filed to fetch '{props.denom ?? "undefined"}' balance of '{props.address ?? "undefined"}' from '{props.lcd ?? "undefined"}': '{ex.JsonSerializeAsPrettyException(Newtonsoft.Json.Formatting.Indented)}'");
                 }
             }
 

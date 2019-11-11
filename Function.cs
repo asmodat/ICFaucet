@@ -118,7 +118,9 @@ namespace ICFaucet
 
                     await ParallelEx.ForEachAsync(msgArr, async msg =>
                     {
+                        _logger.Log($"[info] => @{msg.From.Username ?? msg.From.Id.ToString()} => @{msg.Chat.Username ?? msg.Chat.Title ?? msg.Chat.Id.ToString()}, sent a message: '{msg?.Text ?? "undefined"}'");
                         //*/ DEBUG ONLY
+
                         await ProcessMessage(msg);
                         /*/
                         try

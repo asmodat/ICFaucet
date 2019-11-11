@@ -36,7 +36,9 @@ namespace ICFaucet
 
             props.name = token;
 
-            if (token != "deposit")
+            var deposit = args.TryGetValueOrDefault(3)?.Trim()?.ToLower();
+
+            if (deposit != "deposit")
                 return false;
 
             if (props.index < 0 || props.index > 99999999)
@@ -44,15 +46,16 @@ namespace ICFaucet
 
             if (props.index < 0 || props.index > 99999999) // vlaidate coin index
             {
-                await _TBC.SendTextMessageAsync(text: $"*index* flag `{props.index}` is invalid.", chatId: new ChatId(m.Chat.Id), replyToMessageId: m.MessageId, parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown);
+                await _TBC.SendTextMessageAsync(text: $"*index* flag `{props.index}` is invalid.\nCheck description to see allowed parameters.", chatId: new ChatId(m.Chat.Id), replyToMessageId: m.MessageId, parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown);
                 return true;
             }
 
-            props.prefix = (args.TryGetValueOrDefault(3)?.Trim() ?? cliArgs.GetValueOrDefault("prefix"));
+            if(props.prefix.IsNullOrWhitespace())
+                props.prefix = cliArgs.GetValueOrDefault("prefix");
 
             if (props.prefix.IsNullOrWhitespace()) // vlaidate address prefix
             {
-                await _TBC.SendTextMessageAsync(text: $"*prefix* flag `{props.address ?? "undefined"}` is invalid.", chatId: new ChatId(m.Chat.Id), replyToMessageId: m.MessageId, parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown);
+                await _TBC.SendTextMessageAsync(text: $"*prefix* flag `{props.address ?? "undefined"}` is invalid.\nCheck description to see allowed parameters.", chatId: new ChatId(m.Chat.Id), replyToMessageId: m.MessageId, parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown);
                 return true;
             }
 

@@ -53,9 +53,9 @@ namespace ICFaucet
             else
                 props = new TokenProps();
 
-            if (token.IsNullOrWhitespace() || token.Length < 2 || token.Length > 10) // vlaidate token name
+            if (token.IsNullOrWhitespace() || token.Length < 2 || token.Length > 10) // validate token name
             {
-                await _TBC.SendTextMessageAsync(text: $"Token name `${token ?? "undefined"}` is invalid  or not defined.", chatId: new ChatId(m.Chat.Id), replyToMessageId: m.MessageId, parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown);
+                await _TBC.SendTextMessageAsync(text: $"Token name `${token ?? "undefined"}` is invalid.\nCheck description to see allowed parameters.", chatId: new ChatId(m.Chat.Id), replyToMessageId: m.MessageId, parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown);
                 return null;
             }
 
@@ -66,15 +66,15 @@ namespace ICFaucet
 
             if (props.index < 0 || props.index > 99999999) // vlaidate coin index
             {
-                await _TBC.SendTextMessageAsync(text: $"*index* flag `{props.index}` is invalid.", chatId: new ChatId(m.Chat.Id), replyToMessageId: m.MessageId, parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown);
+                await _TBC.SendTextMessageAsync(text: $"*index* flag `{props.index}` is invalid.\nCheck description to see allowed parameters.", chatId: new ChatId(m.Chat.Id), replyToMessageId: m.MessageId, parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown);
                 return null;
             }
 
             props.address = (args.TryGetValueOrDefault(3)?.Trim() ?? cliArgs.GetValueOrDefault("address"));
 
-            if (props.address.IsNullOrWhitespace() || !Bech32Ex.TryDecode(props.address, out var hrp, out var addrBytes)) // vlaidate coin index
+            if (props.address.IsNullOrWhitespace() || !Bech32Ex.TryDecode(props.address, out var hrp, out var addrBytes)) // validate address
             {
-                await _TBC.SendTextMessageAsync(text: $"*address* flag `{props.address ?? "undefined"}` is invalid.", chatId: new ChatId(m.Chat.Id), replyToMessageId: m.MessageId, parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown);
+                await _TBC.SendTextMessageAsync(text: $"*address* flag `{props.address ?? "undefined"}` is invalid.\nCheck description to see allowed parameters.", chatId: new ChatId(m.Chat.Id), replyToMessageId: m.MessageId, parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown);
                 return null;
             }
 
@@ -92,7 +92,7 @@ namespace ICFaucet
             }
             catch
             {
-                await _TBC.SendTextMessageAsync(text: $"*lcd* flag `{props.lcd ?? "undefined"}` is invalid or node can NOT be reached.", chatId: new ChatId(m.Chat.Id), replyToMessageId: m.MessageId, parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown);
+                await _TBC.SendTextMessageAsync(text: $"*lcd* flag `{props.lcd ?? "undefined"}` is invalid or node can NOT be reached.\nCheck description to see allowed parameters.", chatId: new ChatId(m.Chat.Id), replyToMessageId: m.MessageId, parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown);
                 return null;
             }
 
@@ -105,7 +105,7 @@ namespace ICFaucet
 
             if (props.network.IsNullOrWhitespace() || props.network.Length <= 1 || props.network.Length >= 20)
             {
-                await _TBC.SendTextMessageAsync(text: $"*network* flag `{props.network ?? "undefined"}` is invalid.", chatId: new ChatId(m.Chat.Id), replyToMessageId: m.MessageId, parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown);
+                await _TBC.SendTextMessageAsync(text: $"*network* flag `{props.network ?? "undefined"}` is invalid.\nCheck description to see allowed parameters.", chatId: new ChatId(m.Chat.Id), replyToMessageId: m.MessageId, parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown);
                 return null;
             }
 

@@ -26,6 +26,7 @@ using AWSWrapper.SM;
 using Newtonsoft.Json.Linq;
 using ICWrapper;
 using System.Security;
+using System.Threading;
 
 // Assembly attribute to enable the Lambda function's JSON input to be converted into a .NET class.
 [assembly: LambdaSerializer(typeof(Amazon.Lambda.Serialization.Json.JsonSerializer))]
@@ -43,7 +44,7 @@ namespace ICFaucet
         private int _maxParallelism;
         private double _maxMessageAge;
         private List<Message> _messages;
-        private static readonly object _locker = new object();
+        public static SemaphoreSlim _ssMsgLocker = new SemaphoreSlim(1, 1);
         private SecureString _mnemonic;
 
         public Function()
@@ -52,17 +53,18 @@ namespace ICFaucet
             _messages = new List<Message>();
         }
 
+        //*/ DEBUG ONLY
         static async Task Main(string[] args)
         {
-            
             var port = 5001;
             await LambdaRunner.Create()
                                 .UsePort(port)
                                 .Receives<string>()
-                                .UsesAsyncFunctionWithNoResult<Function>((function, args, context) => function.FunctionHandler(args, context))
+                                .UsesAsyncFunctionWithNoResult<Function>((function, args, context) => function.FunctionHandler(context))
                                 .Build()
                                 .RunAsync();
         }
+        //*/
         
         private void Log(string msg)
         {
@@ -72,7 +74,7 @@ namespace ICFaucet
             _logger.Log(msg);
         }
 
-        public async Task FunctionHandler(string args, ILambdaContext context)
+        public async Task FunctionHandler(ILambdaContext context)
         {
             var sw = Stopwatch.StartNew();
             _context = context;
@@ -109,18 +111,17 @@ namespace ICFaucet
                         continue;
                     }
 
-                    Message[] msgArr;
-                    lock (_locker)
+                    Message[] msgArr = null;
+                    _ssMsgLocker.Lock(() =>
                     {
-                        msgArr = _messages.ToArray();
+                        msgArr = _messages.ToArray().DeepCopy();
                         _messages.Clear();
-                    }
+                    });
 
                     await ParallelEx.ForEachAsync(msgArr, async msg =>
                     {
                         _logger.Log($"[info] => @{msg.From.Username ?? msg.From.Id.ToString()} => @{msg.Chat.Username ?? msg.Chat.Title ?? msg.Chat.Id.ToString()}, sent a message: '{msg?.Text ?? "undefined"}'");
-                        //*/ DEBUG ONLY
-
+                        /*/ DEBUG ONLY
                         await ProcessMessage(msg);
                         /*/
                         try
@@ -130,11 +131,10 @@ namespace ICFaucet
                         catch (Exception ex)
                         {
                             _logger.Log($"[ERROR] => Filed ('{msg?.Chat?.Id ?? 0}') to process message '{msg?.Text ?? "undefined"}': '{ex.JsonSerializeAsPrettyException(Newtonsoft.Json.Formatting.Indented)}'");
-                            await _TBC.SendTextMessageAsync(
-                            chatId: new ChatId(_masterChatId),
-                            $"Something went wrong, visit {await GetMasterChatInviteLink()} to find help.", 
-                            replyToMessageId: msg.MessageId,
-                            parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown);
+                            await _TBC.SendTextMessageAsync(chatId: msg.Chat,
+                                $"Something went wrong, visit {await GetMasterChatInviteLink()} to find help.", 
+                                replyToMessageId: msg.MessageId,
+                                parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown);
                         }
                         //*/
 
@@ -153,12 +153,19 @@ namespace ICFaucet
             if (e.Message == null) // do not process empy message
                 return;
 
+            var chat = e.Message.Chat;
+            var chatId = chat.Username ?? chat.Id.ToString();
+            _logger.Log($"[info] => Chat:{chat.Username ?? chat.Id.ToString()} => User: {e.Message.From.Username ?? e.Message.From.Id.ToString()} => Message ({e.Message.MessageId}): '{e.Message?.Text ?? "undefined"}'");
+
             var dt = (e.Message?.EditDate ?? e.Message?.Date ?? DateTime.UtcNow);
             if (!dt.IsUTC())
                 dt = dt.ToUniversalTime();
 
-            if ((DateTime.UtcNow - dt).TotalSeconds > 24*3600) // do not process old message
+            if ((DateTime.UtcNow - dt).TotalSeconds > _maxMessageAge) // do not process old message
+            {
+                _logger.Log($"[info] => Message ({e.Message.MessageId}) will not be processed because is older then {_maxMessageAge}s");
                 return;
+            }
 
             var text = e.Message.Text; // do not process short messages
             if (text.IsNullOrWhitespace() || text.Length < 3)
@@ -167,8 +174,10 @@ namespace ICFaucet
             if (e.Message.ForwardFrom?.Id != null)
                 return; // do not process forwarded messages
 
-            lock(_locker)
+            _ssMsgLocker.Lock(() =>
+            {
                 _messages.Add(e.Message);
+            });
         }
     }
 }

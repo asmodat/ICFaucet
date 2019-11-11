@@ -19,7 +19,7 @@ Set env variable `AWS_PROFILE` to your credential profile on local.
 > Wizard
 
 ```
-Function name: AWSLauncher
+Function name: ICFaucet
 Runtime: .NET Core 2.1 (C#/PowerShell)
 Choose or create an existing role -> existing role -> (create role with permissions to secrets and ec2)
 ```
@@ -29,12 +29,12 @@ Choose or create an existing role -> existing role -> (create role with permissi
 ```
 CloudWatch Event
 Rule -> Create new rule
-	Rule name -> AWSLauncher-Trigger
+	Rule name -> ICFaucet-Trigger
 	Schedule expression -> rate(1 minute)
 	Enable trigger -> yes
 ```
 
-> AWS Launcher
+> ICFaucet
 
 ```
 Memory: 256 MB
@@ -60,19 +60,24 @@ test_connection: true //test internet connection
 }
 ```
 
+> Props Examples
+
+```
+MUON_PROPS: {"denom":"muon","amount":50000,"index":118,"lcd":"https://lcd.gaia.bigdipper.live","gas":100000,"fees":50000}
+```
+
 > Function code
 
 ```
 Code entry type -> .zip -> (execute ./publish.sh script to generate)
 Runtime: .NET Core 2.1 (C#/PowerShell)
-Handler: AWSLauncher::AWSLauncher.Function::FunctionHandler
+Handler: ICFaucet::ICFaucet.Function::FunctionHandler
 ```
 
-## Example Use
 
-> Join: `https://t.me/cosmosproject` or `https://t.me/kirainterex`
-
-> Post a message: `Give me $MUON cosmos1k5wrdtmd5ngqx4pngwtlmlahv8yz7gk2tccgqg`
+## Get Tokens Example Use
+> Join: `https://t.me/cosmosproject` and `https://t.me/kirainterex`
+> Post a message: `Give me $MUON cosmos1k5wrdtmd5ngqx4pngwtlmlahv8yz7gk2tccgqg` on any of the chats
 
 > Accepted Flags
 ```
@@ -83,8 +88,23 @@ Handler: AWSLauncher::AWSLauncher.Function::FunctionHandler
 ```
 
 > Example explicit message: `Give me $muon cosmos1k5wrdtmd5ngqx4pngwtlmlahv8yz7gk2tccgqg --index=118 --lcd=https://lcd.gaia.bigdipper.live`
+> Example implicit message: `Give me $muon cosmos1k5wrdtmd5ngqx4pngwtlmlahv8yz7gk2tccgqg` will use default parameters
 
 > Coin indexes can be found [here](https://github.com/satoshilabs/slips/blob/master/slip-0044.md)
+
+## Get Deposit Address Example Use
+
+> Join: `https://t.me/cosmosproject` and `https://t.me/kirainterex`
+> Post a message: `Give me $MUON deposit` on any of the chats
+
+> Accepted Flags
+```
+--prefix=<wallet_prefix>
+--index=<coin_index>
+```
+
+> Example explicit message: `Give me $muon deposit --index=118 --prefix=cosmos`
+> Example implicit message: `Give me $muon deposit` will use default parameters
 
 ## Netowrking
 

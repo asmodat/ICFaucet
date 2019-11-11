@@ -2,7 +2,7 @@
 
 echo "Publish START"
 
-app_name="AWSLauncher"
+app_name="ICFaucet"
 pub_dir=./bin/publish
 current_dir=$PWD
 

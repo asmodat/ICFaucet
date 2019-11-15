@@ -46,8 +46,9 @@ namespace ICFaucet
             var inviteLink = await GetMasterChatInviteLink();
             await _TBC.SendTextMessageAsync(
                 chatId: new ChatId(chatId),
-                $"You must be a member of *{_masterChat.Title}*\nJoin us here: {inviteLink}.", 
+                $"To interact with the bot you must be a member of\n*{_masterChat.Title}*\nClick here to join: {inviteLink}.", 
                 replyToMessageId: m.MessageId,
+                disableWebPagePreview: true,
                 parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown);
 
             return false;

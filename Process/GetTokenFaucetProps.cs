@@ -32,11 +32,12 @@ namespace ICFaucet
 {
     public partial class Function
     {
-        private async Task<TokenProps> GetTokenProps(Message m) // verify that user is a part of the master chat
+        private async Task<TokenProps> GetTokenFaucetProps(Message m) // verify that user is a part of the master chat
         {
             var text = m.Text?.Trim();
             var args = text.Split(" ");
             var cliArgs = CLIHelper.GetNamedArguments(args);
+            var user = m.From;
 
             var token = args.TryGetValueOrDefault(2)?.TrimStartSingle("$"); // $ATOM
             var baseName = token?.ToUpper();
@@ -70,21 +71,33 @@ namespace ICFaucet
                 return null;
             }
 
-            props.address = (args.TryGetValueOrDefault(3)?.Trim() ?? cliArgs.GetValueOrDefault("address"));
+            props.address = cliArgs.GetValueOrDefault("address") ?? args.FirstOrDefault(x => Bech32Ex.CanDecode(x));
 
-            if (props.address.IsNullOrWhitespace() || !Bech32Ex.TryDecode(props.address, out var hrp, out var addrBytes)) // validate address
+            if (Bech32Ex.TryDecode(props.address, out var hrp, out var addrBytes))
+                props.prefix = hrp;
+
+            props.prefix = props.prefix ?? cliArgs.GetValueOrDefault("prefix");
+
+            if (props.prefix.IsNullOrWhitespace())
             {
-                await _TBC.SendTextMessageAsync(text: $"*address* flag `{props.address ?? "undefined"}` is invalid.\nCheck description to see allowed parameters.", chatId: new ChatId(m.Chat.Id), replyToMessageId: m.MessageId, parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown);
+                await _TBC.SendTextMessageAsync(text: $"*prefix* ({props.prefix ?? "undefined"}) or *address* ({props.address ?? "undefined"}) flag was not defined.\nCheck description to see allowed parameters.",
+                    chatId: new ChatId(m.Chat.Id), replyToMessageId: m.MessageId, parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown);
                 return null;
             }
 
-            props.prefix = hrp;
+            if (!Bech32Ex.CanDecode(props.address))
+            {
+                var ua = await GetUserAccount(user, createNewAcount: false);
+                var acc = new AsmodatStandard.Cryptography.Cosmos.Account(props.prefix, (uint)props.index);
+                acc.InitializeWithMnemonic(ua.GetSecret());
+                props.address = acc.CosmosAddress;
+            }
 
             var lcd = cliArgs.GetValueOrDefault("lcd");
             if (!lcd.IsNullOrWhitespace())
                 props.lcd = lcd;
 
-            var client = new CosmosHub(lcd: props.lcd);
+            var client = new CosmosHub(lcd: props.lcd, timeoutSeconds: _cosmosHubClientTimeout);
             node_info nodeInfo;
             try
             {

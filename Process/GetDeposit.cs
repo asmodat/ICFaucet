@@ -50,7 +50,15 @@ namespace ICFaucet
                 return true;
             }
 
-            if(props.prefix.IsNullOrWhitespace())
+            props.memo = cliArgs.GetValueOrDefault("memo") ?? "";
+            if(!props.memo.IsNullOrEmpty() && props.memo.Length > 256)
+            {
+                await _TBC.SendTextMessageAsync(text: $"*memo* can't have more then 256 characters, but was {props.memo.Length} characters.\nCheck description to see allowed parameters.", 
+                    chatId: new ChatId(m.Chat.Id), replyToMessageId: m.MessageId, parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown);
+                return true;
+            }
+
+            if (props.prefix.IsNullOrWhitespace())
                 props.prefix = cliArgs.GetValueOrDefault("prefix");
 
             if (props.prefix.IsNullOrWhitespace()) // vlaidate address prefix
@@ -64,7 +72,7 @@ namespace ICFaucet
             var cosmosAdress = acc.CosmosAddress;
 
             await _TBC.SendTextMessageAsync(chatId: m.Chat,
-                    $"Faucet Public Address: `{cosmosAdress}`",
+                    $"*Faucet* Public Address: `{cosmosAdress}`",
                     replyToMessageId: m.MessageId,
                     parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown);
 

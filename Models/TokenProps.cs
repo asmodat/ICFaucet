@@ -12,7 +12,15 @@ namespace ICFaucet.Models
         /// </summary>
         public int index { get; set; } = -1;
 
+        /// <summary>
+        /// Destination Address
+        /// </summary>
         public string address { get; set; }
+
+        /// <summary>
+        /// Source Address
+        /// </summary>
+        public string origin { get; set; }
 
         public string prefix { get; set; }
 
@@ -22,5 +30,7 @@ namespace ICFaucet.Models
         public long amount { get; set; } = 100000;
         public long gas { get; set; } = 200000;
         public long fees { get; set; } = 50000;
+
+        public string memo { get; set; }
     }
 }

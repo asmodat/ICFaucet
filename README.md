@@ -63,9 +63,12 @@ test_connection: true //test internet connection
 > Props Examples
 
 ```
-MUON_PROPS: {"denom":"muon","amount":50000,"index":118,"lcd":"https://lcd.gaia.bigdipper.live","gas":100000,"fees":50000}
+muon_PROPS: {"denom":"muon","amount":50000,"index":118,"prefix":"cosmos","lcd":"https://lcd.gaia.bigdipper.live","gas":100000,"fees":50000}
+cyb_PROPS: {"denom":"cyb","amount":50000,"index":118,"prefix":"cyber","lcd":"http://93.125.26.210:27117","gas":100000,"fees":50000}
+atom_PROPS: {"denom":"uatom","amount":50000,"index":118,"prefix":"cosmos","lcd":"https://lcd.nylira.net","gas":100000,"fees":50000}
+tree_PROPS: {"denom":"utree","amount":50000,"index":118,"prefix":"xrn:","lcd":"https://regen-lcd.chorus.one:1317","gas":100000,"fees":50000}
 ```
-
+ 
 > Function code
 
 ```
@@ -73,7 +76,6 @@ Code entry type -> .zip -> (execute ./publish.sh script to generate)
 Runtime: .NET Core 2.1 (C#/PowerShell)
 Handler: ICFaucet::ICFaucet.Function::FunctionHandler
 ```
-
 
 ## Get Tokens Example Use
 > Join: `https://t.me/cosmosproject` and `https://t.me/kirainterex`
@@ -106,6 +108,10 @@ Handler: ICFaucet::ICFaucet.Function::FunctionHandler
 > Example explicit message: `Give me $muon deposit --index=118 --prefix=cosmos`
 > Example implicit message: `Give me $muon deposit` will use default parameters
 
+## Transfer Tokens use example
+
+> Reply to: `tip 1 $MUON --index=118 --prefix=cosmos --lcd=https://lcd.gaia.bigdipper.live`
+
 ## Netowrking
 
 > Lambdas suffer from some networking issues especially when working with private subnets
@@ -119,6 +125,33 @@ https://docs.aws.amazon.com/vpc/latest/userguide/vpc-dns.html
 https://www.oodlestechnologies.com/blogs/How-to-grant-internet-access-to-AWS-Lambda-under-VPC/
 ```
 
+## Bot Description
+
+```
+Kira Faucet allows you to claim tokens from any `cosmos-sdk` based project.
+
+To receive tokens join @kirainterex and send following message:
+`Give me $<token_name> <account_address> --index=<coin_index> --lcd=<lcd_url_address>`
+
+To deposit tokens join @kirainterex and send following message:
+`Give me $<token_name> deposit --index=<coin_index> --prefix=<wallet_prefix>`
+
+To register new token ping @asmodat, and use faucet with implicit commands:
+`Give me $<token_name> <account_address>`
+`Give me $<token_name> deposit`
+```
+
+```
+To receive tokens:
+`Get me $<token_name> <account_address> --index=<coin_index> --lcd=<lcd_url_address>`
+
+To deposit tokens:
+`Get me $<token_name> deposit --index=<coin_index> --prefix=<wallet_prefix>`
+
+To register new token ping @asmodat, and use faucet with implicit commands:
+`Get me $<token_name> <account_address>`
+`Get me $<token_name> deposit`
+```
 
 
 

@@ -79,5 +79,14 @@ namespace ICFaucet
 
             return member.IsActiveMember();
         }
+
+        public static string GetMarkDownUsername(this User user)
+        {
+            if (!user.Username.IsNullOrWhitespace())
+                return $"@{user.Username}";
+
+            var name = $"{user.FirstName?.Trim() ?? ""} {user.FirstName?.Trim() ?? ""}".Trim();
+            return $"[{name}](tg://user?id={user.Id})";
+        }
     }
 }

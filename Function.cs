@@ -1,3 +1,10 @@
+/*/ DEBUG ONLY
+#define TEST
+using EMG.Lambda.LocalRunner;
+/*/
+#define PUBLISH
+//*/
+
 using System;
 using System.Diagnostics;
 using System.Threading.Tasks;
@@ -5,28 +12,17 @@ using AsmodatStandard.Extensions;
 using AsmodatStandard.Extensions.Collections;
 using Amazon.Lambda.Core;
 using AsmodatStandard.Networking;
-//using AWSWrapper.SM;
 using Telegram.Bot;
-using Amazon.Lambda.RuntimeSupport;
-using Amazon.Lambda.Serialization.Json;
-
 using System.Collections.Generic;
-using System.Linq;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
-using Amazon.Lambda.APIGatewayEvents;
-using EMG.Lambda.LocalRunner;
-using System.Collections.Concurrent;
 using Telegram.Bot.Types;
 using AsmodatStandard.Extensions.Threading;
 using AsmodatStandard.Extensions.Security;
+using AsmodatStandard.Cryptography;
 using AWSWrapper.SM;
 using Newtonsoft.Json.Linq;
-using ICWrapper;
 using System.Security;
 using System.Threading;
+using AWSWrapper.S3;
 
 // Assembly attribute to enable the Lambda function's JSON input to be converted into a .NET class.
 [assembly: LambdaSerializer(typeof(Amazon.Lambda.Serialization.Json.JsonSerializer))]
@@ -35,6 +31,7 @@ namespace ICFaucet
     public partial class Function
     {
         private SMHelper _SM;
+        private S3Helper _S3;
         private ILambdaLogger _logger;
         private ILambdaContext _context;
         private bool _verbose;
@@ -44,16 +41,25 @@ namespace ICFaucet
         private int _maxParallelism;
         private double _maxMessageAge;
         private List<Message> _messages;
+        private List<CallbackQuery> _callbacks;
         public static SemaphoreSlim _ssMsgLocker = new SemaphoreSlim(1, 1);
+        public static SemaphoreSlim _ssCbqLocker = new SemaphoreSlim(1, 1);
         private SecureString _mnemonic;
+        private readonly string _version = "v0.1.3";
+        private string _bucket;
+        private int _cosmosHubClientTimeout;
+        private Stopwatch _sw;
 
         public Function()
         {
             _SM = new SMHelper();
+            _S3 = new S3Helper();
             _messages = new List<Message>();
+            _callbacks = new List<CallbackQuery>();
+            _sw = Stopwatch.StartNew();
         }
 
-        //*/ DEBUG ONLY
+#if (TEST)
         static async Task Main(string[] args)
         {
             var port = 5001;
@@ -63,9 +69,9 @@ namespace ICFaucet
                                 .UsesAsyncFunctionWithNoResult<Function>((function, args, context) => function.FunctionHandler(context))
                                 .Build()
                                 .RunAsync();
-        }
-        //*/
-        
+    }
+#endif
+
         private void Log(string msg)
         {
             if (msg.IsNullOrEmpty() || !_verbose)
@@ -83,21 +89,34 @@ namespace ICFaucet
             _verbose = Environment.GetEnvironmentVariable("verbose").ToBoolOrDefault(true);
             _masterChatId = new ChatId(Environment.GetEnvironmentVariable("MASTER_CHAT_ID").ToLongOrDefault(-1001261081309));
             _maxParallelism = Environment.GetEnvironmentVariable("MAX_PARALLELISM").ToIntOrDefault(0);
-            _maxMessageAge = Environment.GetEnvironmentVariable("MAX_MESSAGE_AGE").ToDoubleOrDefault(24*3600);
+            _cosmosHubClientTimeout = Environment.GetEnvironmentVariable("HUB_CLIENT_TIMEOUT").ToIntOrDefault(7);
+            _maxMessageAge = Environment.GetEnvironmentVariable("MAX_MESSAGE_AGE").ToDoubleOrDefault(24 * 3600);
+            _bucket = Environment.GetEnvironmentVariable("BUCKET_NAME");
+
             var secretName = Environment.GetEnvironmentVariable("SECRET_NAME") ?? "KiraFaucetBot";
 
             if (Environment.GetEnvironmentVariable("test_connection").ToBoolOrDefault(false))
                 Log($"Your Internet Connection is {(SilyWebClientEx.CheckInternetAccess(timeout: 5000) ? "" : "NOT")} available.");
 
             var secret = JObject.Parse(await _SM.GetSecret(secretName));
+
+#if (TEST)
+            var accessToken = secret["test_token"]?.ToString();
+            //_mnemonic = (secret["test_mnemonic"]?.ToString()).ToSecureString();
+            _mnemonic = (secret["mnemonic"]?.ToString()).ToSecureString();
+            _bucket = "kira-faucet-test";
+#elif (PUBLISH)
             var accessToken = secret["token"]?.ToString();
             _mnemonic = (secret["mnemonic"]?.ToString()).ToSecureString();
+#endif
             _TBC = new TelegramBotClient(accessToken);
             _bot = await _TBC.GetMeAsync();
-            Log($"[INFO] @{_bot.Username ?? "undefined"}, ID: '{_bot.Id}', Master Chat: '{_masterChatId.Identifier}'");
+            Log($"[INFO] {_bot.FirstName} {_version} started! Bot Name: @{_bot.Username ?? "undefined"}, Bot Id: '{_bot.Id}', Master Chat: '{_masterChatId.Identifier}'");
 
             _TBC.OnMessage += Tbc_OnMessage;
-            _TBC.OnMessageEdited += Tbc_OnMessage;
+            _TBC.OnCallbackQuery += _TBC_OnCallbackQuery;
+            _TBC.OnInlineQuery += _TBC_OnInlineQuery;
+            _TBC.OnInlineResultChosen += _TBC_OnInlineResultChosen;
             _TBC.StartReceiving();
 
             try
@@ -105,7 +124,10 @@ namespace ICFaucet
                 Log($"Processing...");
                 while (true)
                 {
-                    if (_messages.IsNullOrEmpty())
+                    if(_sw.ElapsedMilliseconds >= ((15 * 60 * 1000) - 3000))
+                        _TBC.StopReceiving();
+
+                    if (_messages.IsNullOrEmpty() && _callbacks.IsNullOrEmpty())
                     {
                         await Task.Delay(100);
                         continue;
@@ -118,29 +140,64 @@ namespace ICFaucet
                         _messages.Clear();
                     });
 
-                    await ParallelEx.ForEachAsync(msgArr, async msg =>
+                    var t0 = ParallelEx.ForEachAsync(msgArr, async msg => {
+                        var user = msg.From;
+                        var replyUser = msg.ReplyToMessage?.From;
+
+                        if (user != null)
+                            await UpdateUserData(user);
+
+                        if (replyUser != null && user.Id != replyUser.Id)
+                            await UpdateUserData(replyUser);
+                    });
+
+                    var t1 = ParallelEx.ForEachAsync(msgArr, async msg =>
                     {
-                        _logger.Log($"[info] => @{msg.From.Username ?? msg.From.Id.ToString()} => @{msg.Chat.Username ?? msg.Chat.Title ?? msg.Chat.Id.ToString()}, sent a message: '{msg?.Text ?? "undefined"}'");
-                        /*/ DEBUG ONLY
+#if (TEST)
                         await ProcessMessage(msg);
-                        /*/
+#elif (PUBLISH)
                         try
                         {
                             await ProcessMessage(msg);
                         }
                         catch (Exception ex)
                         {
-                            _logger.Log($"[ERROR] => Filed ('{msg?.Chat?.Id ?? 0}') to process message '{msg?.Text ?? "undefined"}': '{ex.JsonSerializeAsPrettyException(Newtonsoft.Json.Formatting.Indented)}'");
+                            _logger.Log($"[ERROR] => Filed ('{msg?.Chat?.Id ?? 0}') to process message ({msg?.MessageId}): '{ex.JsonSerializeAsPrettyException(Newtonsoft.Json.Formatting.Indented)}'");
                             await _TBC.SendTextMessageAsync(chatId: msg.Chat,
                                 $"Something went wrong, visit {await GetMasterChatInviteLink()} to find help.", 
                                 replyToMessageId: msg.MessageId,
                                 parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown);
                         }
-                        //*/
-
+#endif
                     }, maxDegreeOfParallelism: _maxParallelism);
-                }
 
+                    CallbackQuery[] cbqArr = null;
+                    _ssCbqLocker.Lock(() =>
+                    {
+                        cbqArr = _callbacks.ToArray().DeepCopy();
+                        _callbacks.Clear();
+                    });
+                    var t2 = ParallelEx.ForEachAsync(cbqArr, async cbq =>
+                    {
+#if (TEST)
+                        await ProcessCallbacks(cbq);
+#elif (PUBLISH)
+                        try
+                        {
+                            await ProcessCallbacks(cbq);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.Log($"[ERROR] => Filed ('{cbq.Message?.Chat?.Id ?? 0}') to process callback ({cbq.Id}): '{ex.JsonSerializeAsPrettyException(Newtonsoft.Json.Formatting.Indented)}'");
+                            await _TBC.SendTextMessageAsync(chatId: cbq.Message.Chat,
+                                $"Something went wrong, visit {await GetMasterChatInviteLink()} to find help.",
+                                parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown);
+                        }
+#endif
+                    }, maxDegreeOfParallelism: _maxParallelism);
+
+                    await Task.WhenAll(t0, t1, t2);     
+                }
             }
             finally
             {
@@ -148,36 +205,38 @@ namespace ICFaucet
             }
         }
 
-        private void Tbc_OnMessage(object sender, Telegram.Bot.Args.MessageEventArgs e)
+
+        public async Task UpdateUserData(User user)
         {
-            if (e.Message == null) // do not process empy message
+            if (user == null || user.Username.IsNullOrWhitespace())
                 return;
 
-            var chat = e.Message.Chat;
-            var chatId = chat.Username ?? chat.Id.ToString();
-            _logger.Log($"[info] => Chat:{chat.Username ?? chat.Id.ToString()} => User: {e.Message.From.Username ?? e.Message.From.Id.ToString()} => Message ({e.Message.MessageId}): '{e.Message?.Text ?? "undefined"}'");
-
-            var dt = (e.Message?.EditDate ?? e.Message?.Date ?? DateTime.UtcNow);
-            if (!dt.IsUTC())
-                dt = dt.ToUniversalTime();
-
-            if ((DateTime.UtcNow - dt).TotalSeconds > _maxMessageAge) // do not process old message
+            var userKey = $"users/{user.Username.SHA256().ToHexString()}";
+            var newUser = user.JsonSerialize();
+            if (await _S3.ObjectExistsAsync(_bucket, key: userKey))
             {
-                _logger.Log($"[info] => Message ({e.Message.MessageId}) will not be processed because is older then {_maxMessageAge}s");
+               var oldUser = await _S3.DownloadTextAsync(_bucket, userKey);
+               if (oldUser?.ReplaceMany((" ",""),("\n", ""), ("\r", "")) == newUser?.Replace((" ",""),("\n", ""),("\r", "")))
                 return;
             }
+            
+            await _S3.UploadTextAsync(_bucket, userKey, user.JsonSerialize());
+        }
 
-            var text = e.Message.Text; // do not process short messages
-            if (text.IsNullOrWhitespace() || text.Length < 3)
-                return;
+        public async Task<User> TryGetUserByUsername(string username)
+        {
+            if (username.IsNullOrWhitespace())
+                return null;
 
-            if (e.Message.ForwardFrom?.Id != null)
-                return; // do not process forwarded messages
-
-            _ssMsgLocker.Lock(() =>
+            var userKey = $"users/{username.SHA256().ToHexString()}";
+            if (await _S3.ObjectExistsAsync(_bucket, key: userKey))
             {
-                _messages.Add(e.Message);
-            });
+                var user = await _S3.DownloadJsonAsync<User>(_bucket, userKey);
+                if (user.Id != 0)
+                    return user;
+            }
+
+            return null;
         }
     }
 }

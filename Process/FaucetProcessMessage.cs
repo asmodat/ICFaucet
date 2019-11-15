@@ -12,27 +12,34 @@ using AsmodatStandard.Extensions.Threading;
 using ICWrapper.Cosmos.CosmosHub.Models;
 using System.Collections.Concurrent;
 using AsmodatStandard.IO;
+using Telegram.Bot.Types.Enums;
 
 namespace ICFaucet
 {
     public partial class Function
     {
-        public static SemaphoreSlim _ssLocker = new SemaphoreSlim(1, 1);
-        private ConcurrentDictionary<string, long> sequences = new ConcurrentDictionary<string, long>();
-
-        private async Task ProcessMessage(Message m)
+        private async Task FaucetProcessMessage(Message m)
         {
             var chat = m.Chat;
             var userId = m.From.Id;
-            var text = m.Text?.Trim();
+            var text = (m.Text?.Trim() ?? "").Trim('\'', '"', '`', '*', '[', ']');
+            var args = text.Split(" ");
+            var cliArgs = CLIHelper.GetNamedArguments(args);
 
-            if (m.From.IsBot == true || !(text?.ToLower()).StartsWith("give me $"))
+            await _TBC.SendChatActionAsync(chat, ChatAction.Typing); //simulate keystrokes
+
+            var token = args.TryGetValueOrDefault(2)?.TrimStartSingle("$"); // $ATOM
+            if (token?.ToLower() == "kex" && Environment.GetEnvironmentVariable($"{token?.ToLower()}_PROPS").IsNullOrWhitespace())
+            {
+                await _TBC.SendTextMessageAsync(chatId: chat, $"That one's comming 🔜 😉",
+                        replyToMessageId: m.MessageId, parseMode: ParseMode.Default);
                 return;
+            }
 
             if (!await this.CheckMasterChatMembership(m)) return;
             if (await GetDeposit(m)) return;
 
-            var props = await GetTokenProps(m);
+            var props = await GetTokenFaucetProps(m);
 
             if (props == null) //failed to read properties
                 return;
@@ -44,22 +51,25 @@ namespace ICFaucet
             TxResponse txResponse = null;
             Account accountInfo = null;
             Token accountBalance = null;
+            long faucetTokenBalance = 0;
             var notEnoughFunds = false;
-            var client = new CosmosHub(lcd: props.lcd);
+            var client = new CosmosHub(lcd: props.lcd, timeoutSeconds: _cosmosHubClientTimeout);
 
             if (props.address != cosmosAdress)
             {
                 try
                 {
                     var userAccountInfo = await client.GetAccount(account: props.address);
-                    var userAccountBalance = (userAccountInfo?.coins).FirstOrDefault(x => x.denom.ToLower() == props.denom);
+                    var userAccountBalance = userAccountInfo?.coins?.FirstOrDefault(x => x?.denom?.ToLower() == props.denom);
                     var userBalance = (userAccountBalance?.amount).ToLongOrDefault(0);
 
-                    if (userBalance >= props.amount)
+                    if (userBalance >= props.amount || userAccountInfo?.coins == null)
                     {
                         await _TBC.SendTextMessageAsync(text: $"Your account balance exceeds `{props.amount} {props.denom}`", chatId: new ChatId(m.Chat.Id), replyToMessageId: m.MessageId, parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown);
                         return;
                     }
+
+                    props.amount = props.amount - userBalance; //only send difference up to max amount
                 }
                 catch (Exception ex)
                 {
@@ -70,10 +80,10 @@ namespace ICFaucet
             await _ssLocker.Lock(async () =>
             {
                 accountInfo = await client.GetAccount(account: cosmosAdress);
-                accountBalance = (accountInfo?.coins).FirstOrDefault(x => x.denom.ToLower() == props.denom);
-                var faucetBalance = (accountBalance?.amount).ToLongOrDefault(0);
+                accountBalance = accountInfo?.coins?.FirstOrDefault(x => x?.denom?.ToLower() == props.denom);
+                faucetTokenBalance = (accountBalance?.amount).ToLongOrDefault(0);
                 props.denom = accountBalance?.denom ?? props.denom;
-                if (faucetBalance <= 0)
+                if (faucetTokenBalance <= 0)
                 {
                     notEnoughFunds = true;
                     return;
@@ -84,13 +94,13 @@ namespace ICFaucet
                 sequences[props.network] = Math.Max(sequence, oldSeque + 1);
                 accountInfo.sequence = sequences[props.network].ToString();
 
-                props.amount = Math.Max(Math.Min(props.amount, faucetBalance / 2), 1);
+                props.amount = Math.Max(Math.Min(props.amount, faucetTokenBalance / 2), 1);
             });
 
             if (notEnoughFunds)
             {
                 await _TBC.SendTextMessageAsync(chatId: chat,
-                    $"Faucet does not have enough `{props.denom ?? "undefined"}` tokens or coin index ({props.index}) is invalid.\n\n" +
+                    $"Faucet does not have enough `{props.denom ?? "undefined"}` tokens ({faucetTokenBalance}) or coin index ({props.index}) is invalid.\n\n" +
                     $"Network Id: `{props.network ?? "undefined"}`\n" +
                     $"Faucet Public Address: `{cosmosAdress}`",
                     replyToMessageId: m.MessageId,
@@ -105,7 +115,7 @@ namespace ICFaucet
                                 denom: accountBalance.denom,
                                 fees: props.fees,
                                 gas: props.gas,
-                                memo: "Kira Universal Interchain Faucet - Join us at https://t.me/kirainterex");
+                                memo: props.memo ?? "Kira Interchain Faucet - Join us at https://t.me/kirainterex");
 
             var tx = doc.CreateTx(acc);
 

@@ -107,27 +107,19 @@ namespace ICFaucet
                     network = props.network;
                 props.network = network;
 
-                if (props.network.IsNullOrWhitespace() || props.network.Length <= 1 || props.network.Length >= 20)
+                if (props.network.IsNullOrWhitespace() || props.network.Length <= 1)
                 {
                     await _TBC.SendTextMessageAsync(text: $"*network* flag `{props.network ?? "undefined"}` is invalid.\nCheck description to see allowed parameters.", chatId: new ChatId(m.Chat.Id), replyToMessageId: m.MessageId, parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown);
                     return true;
                 }
 
-                var denom = cliArgs.GetValueOrDefault("denom");
-                if (!denom.IsNullOrWhitespace())
-                    denom = props?.denom;
-                if (denom.IsNullOrEmpty())
-                    denom = props.name.ToLower();
-                props.denom = denom;
-
+                props.denom = cliArgs.GetValueOrDefault("denom") ?? props.denom ?? props.name.ToLower();
                 var fromAccountInfo = await client.GetAccount(account: cosmosAdress);
-                var fromAccountBalance = fromAccountInfo?.coins?.FirstOrDefault(x => x?.denom?.ToLower() == props.denom);
-                props.denom = fromAccountBalance?.denom ?? props.denom;
+                var fromAccountBalance = fromAccountInfo?.coins?.FirstOrDefault(x => x?.denom?.ToLower() == props.denom.ToLower());
 
                 await _TBC.SendTextMessageAsync(chatId: m.Chat,
-                        $"{user.GetMarkDownUsername()} Account Balance:\n" +
                         $"Address: `{cosmosAdress}`\n" +
-                        $"Amount: `{fromAccountBalance?.amount ?? "0"} {props.denom}`\n" +
+                        $"Amount: `{fromAccountBalance?.amount ?? "0"} {fromAccountBalance?.denom ?? props.denom}`\n" +
                         $"Network: `{props.network}`",
                         replyToMessageId: m.MessageId,
                         parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown);

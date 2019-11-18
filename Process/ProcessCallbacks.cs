@@ -154,6 +154,7 @@ namespace ICFaucet
         {
             var chat = m.Chat;
             var text = m.Text?.Trim() ?? "";
+            var replyToTest = m?.ReplyToMessage?.Text ?? "";
             await _TBC.SendChatActionAsync(chat, ChatAction.Typing); //simulate keystrokes
 
             if (text.ToLower() == "/start")
@@ -161,7 +162,7 @@ namespace ICFaucet
                 await DisplayMainMenu(chat);
                 return true;
             }
-            else if ((m?.ReplyToMessage?.Text).Contains(_accountRecoveryMessageTitle))
+            else if (replyToTest.Contains(_accountRecoveryMessageTitle))
             {
                 await RecoverUserAccount(chat, m.From.Id, text);
                 return true;

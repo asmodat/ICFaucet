@@ -61,6 +61,104 @@ namespace ICFaucet
                 await TransactionProcessMessage(m);
                 return;
             }
+
+            if (textLower.StartsWith("get tx") ||
+                textLower.StartsWith("show tx") ||
+                textLower.StartsWith("query tx"))
+            {
+                if (!await this.CheckMasterChatMembership(m))
+                    return;
+
+                await TxHashDiscovery(m);
+                return;
+            }
+        }
+
+
+        public async Task TxHashDiscovery(Message msg)
+        {
+            var chat = msg?.Chat;
+            var text = $"{msg?.Text} {msg?.ReplyToMessage?.Text} {msg?.ReplyToMessage?.ReplyToMessage?.Text}";
+
+            if (chat == null || text.IsNullOrWhitespace())
+                return;
+
+            var arr = text.Split();
+            string hash = null;
+            foreach (var s in arr)
+            {
+                hash = s.Trim("*", "`", "\"", "'", " ", "[", "]", "(", ")", "\n", "\r");
+                if (hash.Length > 32 && hash.IsHex())
+                    break;
+            }
+
+            if (!hash.IsHex())
+                return;
+
+            var props = GetTokenPropsFromTextCommand(text);
+
+            var lcds = FHelper.GetAllLCDs();
+            if (!props.lcd.IsNullOrEmpty())
+                lcds = lcds.Prepend(props.lcd).ToArray();
+
+            string error = null, gas = null, height = null, timestamp = null, network = null, output = null, log = null;
+            TxsResponse txs = null;
+
+            if(lcds.IsNullOrEmpty())
+            {
+                await _TBC.SendTextMessageAsync(chatId: chat, "*lcd* property was not found", replyToMessageId: msg.MessageId, parseMode: ParseMode.Markdown);
+                return;
+            }
+
+            for (int i = 0; i < lcds.Length; i++)
+            {
+                error = null;
+                var client = new CosmosHub(lcd: lcds[i], timeoutSeconds: _cosmosHubClientTimeout);
+                var keystrokeTask = _TBC.SendChatActionAsync(chat, ChatAction.Typing); //simulate keystrokes
+
+                try
+                {
+                    var t1 = client.GetNodeInfo();
+                    var t2 = client.GetTxs(hash);
+                    props.network = (await t1).network ?? props.network;
+                    txs = await t2;
+                    if((txs.height).ToLongOrDefault(-1) > 0)
+                        break;
+                }
+                catch(Exception ex)
+                {
+                    await keystrokeTask;
+                    error = $"\nError: `Tx hash was not found.`";
+                    _logger.Log($"[DISCOVERY PROCESS ERROR] => Filed ('{msg?.Chat?.Id ?? 0}') to query tx hash: '{ex.JsonSerializeAsPrettyException(Newtonsoft.Json.Formatting.Indented)}'");
+                }
+            }
+
+            if (error.IsNullOrWhitespace() && !(txs?.error).IsNullOrWhitespace())
+                error = $"\nError: `{txs.error}`";
+
+            if (error.IsNullOrWhitespace())
+            {
+                gas = $"\nGas Used: `{txs.gas_used}`\nGas Wanted: `{txs.gas_wanted}`";
+                height = $"\nHeight: `{txs.height}`";
+                timestamp = $"\nTimestamp: `{txs.timestamp}`";
+                network = $"\nNetwork: `{props.network}`";
+                log = $"\nLog: `{txs.raw_log}`";
+
+                var outputJson = (txs?.tx?.value).JsonSerialize(Newtonsoft.Json.Formatting.Indented);
+                outputJson = outputJson.TrimOnTrigger('[', '\n', '\r', ' ');
+                outputJson = outputJson.TrimOnTrigger(']', '\n', '\r', ' ');
+                outputJson = outputJson.TrimOnTrigger('}', '\n', '\r', ' ');
+
+                if (outputJson.Length > 8 && outputJson.Length < 3072)
+                    output = $"\n\nOutput: `{outputJson}`";
+                else if (outputJson.Length >= 3072)
+                    output = $"\n\nOutput:\n`Too long to display 😢`";
+            }
+
+            await _TBC.SendTextMessageAsync(chatId: chat,
+                $"Hash: `{hash}`\n" + height + gas + network + timestamp + log + error + output,
+                            replyToMessageId: msg.MessageId,
+                            parseMode: ParseMode.Markdown);
         }
 
         private async Task TransactionProcessMessage(Message m)
@@ -70,14 +168,14 @@ namespace ICFaucet
 
             var chat = m.Chat;
             var from = m.From;
-            var to = (m.ReplyToMessage?.ForwardFrom == null) ? m.ReplyToMessage.From : null;
+            var to = m.ReplyToMessage?.From;
             var text = (m.Text?.Trim() ?? "").Trim('\'', '"', '`', '*', '[', ']');
 
             var args = text.Split(" ");
             var cliArgs = CLIHelper.GetNamedArguments(args);
 
             var toUsername = args.TryGetValueOrDefault(1, "").Trim(' ', '\'', '"', '*', '`', '[', ']');
-            var toAddress = (args.TryGetValueOrDefault(3, "") ?? cliArgs.GetValueOrDefault("address")).Trim(' ', '\'', '"', '*', '`', '[', ']');
+            var toAddress = (cliArgs.GetValueOrDefault("address") ?? args.TryGetValueOrDefault(3, "")).Trim(' ', '\'', '"', '*', '`', '[', ']');
 
             if (!Bech32Ex.TryDecode(toAddress, out var hrp, out var addrBytes))
                 toAddress = null;
@@ -91,7 +189,9 @@ namespace ICFaucet
             if (to == null && toAddress.IsNullOrWhitespace())
             {
                 await _TBC.SendTextMessageAsync(chatId: chat,
-                    $"Transaction can't be send, user @{toUsername ?? "null"} is not an active member of *{chat.Title}* group or `address` property is invalid. Try a 'reply to option', for example: Reply to -> `tip <amount> $<token_name>` rather then `tx @<username> <amount> $<token>` or specify `address` argument, e.g: `tx <amount> $<token> --address=<publicKey>`.",
+                    $"Transaction can't be send.\n" +
+                    $"User @{toUsername ?? "null"} is not an active member of *{chat.Title}* group, `address` property is invalid or you responded to the old message that bot can't see.\n" +
+                    $"Try a 'reply to option', for example: Reply to -> `tip <amount> $<token_name>` rather then `tx @<username> <amount> $<token>` or specify `address` argument, e.g: `tx <amount> $<token> --address=<publicKey>`.",
                     replyToMessageId: m.MessageId,
                     parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown);
                 return;
@@ -106,17 +206,34 @@ namespace ICFaucet
             else
                 props = new TokenProps();
 
-            props.denom = props.denom ?? token.ToLower();
+            props.denom = cliArgs.GetValueOrDefault("denom") ?? props.denom ?? token.ToLower();
             props.amount = (args.FirstOrDefault(x => x.Trim().IsDigits()).Trim() ?? cliArgs.GetValueOrDefault("amount")).ToLongOrDefault(0);
             props.fees = cliArgs.GetValueOrDefault("fees", props.fees.ToString()).ToLongOrDefault(0);
 
-            if (props.amount < 0 || props.fees < 0 || props.denom.IsNullOrWhitespace())
+            if (props.amount < 0 || props.fees < 0)
             {
                 await _TBC.SendTextMessageAsync(chatId: chat,
-                    $"`amount`, `fees` or `token` was not specified.",
+                    $"`amount` or `fees` or `token` were not specified.",
                     replyToMessageId: m.MessageId,
                     parseMode: ParseMode.Markdown);
                 return;
+            }
+
+            string wallet = null;
+            try
+            {
+                var account = await GetUserAccount(from);
+                var acc = new AsmodatStandard.Cryptography.Cosmos.Account(props.prefix, (uint)props.index);
+                acc.InitializeWithMnemonic(account.GetSecret());
+                var client = new CosmosHub(lcd: props.lcd, timeoutSeconds: _cosmosHubClientTimeout);
+                var fromAccountInfo = await client.GetAccount(account: acc.CosmosAddress);
+                var fromAccountBalance = fromAccountInfo?.coins?.FirstOrDefault(x => x?.denom?.ToLower() == props.denom.ToLower());
+                var fromBalance = (fromAccountBalance?.amount).ToBigIntOrDefault(0);
+                wallet = $"Wallet: `{fromBalance} {props.denom}`";
+            }
+            catch
+            {
+                
             }
 
             var optionsKeyboard = new InlineKeyboardMarkup(new[]
@@ -135,7 +252,7 @@ namespace ICFaucet
                 $"From: {from.GetMarkDownUsername()} (`{from.Id}`)\n" +
                 toConfirm +
                 $"Amount: `{props.amount} {props.denom}`\n" +
-                $"Fees: `{props.fees} {props.denom}`",
+                $"Fees: `{props.fees} {props.denom}`\n" + wallet,
                 replyToMessageId: m.MessageId,
                 replyMarkup: optionsKeyboard,
                 parseMode: ParseMode.Markdown);

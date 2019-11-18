@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 
 namespace ICFaucet.Models
 {
@@ -27,9 +28,9 @@ namespace ICFaucet.Models
         public string lcd { get; set; }
         public string network { get; set; }
 
-        public long amount { get; set; } = 100000;
-        public long gas { get; set; } = 200000;
-        public long fees { get; set; } = 50000;
+        public BigInteger amount { get; set; } = 100000;
+        public BigInteger gas { get; set; } = 100000;
+        public BigInteger fees { get; set; } = 100;
 
         public string memo { get; set; }
     }

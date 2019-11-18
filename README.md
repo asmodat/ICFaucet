@@ -61,16 +61,31 @@ test_connection: true //test internet connection
 ```
 
 > Props Examples
+```
+muon_PROPS: {"denom":"muon","amount":50000,"index":118,"prefix":"cosmos","lcd":"https://lcd.gaia.bigdipper.live","gas":100000,"fees":100}
+cyb_PROPS: {"denom":"cyb","amount":50000,"index":118,"prefix":"cyber","lcd":"http://93.125.26.210:27117","gas":100000,"fees":100}
+atom_PROPS: {"denom":"uatom","amount":50000,"index":118,"prefix":"cosmos","lcd":"https://lcd.nylira.net","gas":100000,"fees":100}
+uatom_PROPS: {"denom":"uatom","amount":50000,"index":118,"prefix":"cosmos","lcd":"https://lcd.nylira.net","gas":100000,"fees":100}
+tree_PROPS: {"denom":"utree","amount":50000,"index":118,"prefix":"xrn:","lcd":"https://regen-lcd.chorus.one:1317","gas":100000,"fees":100}
+tsent_PROPS: {"denom":"tsent","amount":50000,"index":118,"prefix":"sent","lcd":"https://lcd.turing.dragonstake.io","gas":100000,"fees":100,"memo":"@InterchainWalletBot by KiraEx.com, LCD by DragonStake.io"}
+tiris_PROPS: {"denom":"iris-atto","amount":50000,"index":118,"prefix":"faa","lcd":"http://iris_testnet.nodeateam.com:1317","gas":100000,"fees":50}
+kava_PROPS: {"denom":"ukava","amount":50000,"index":118,"prefix":"kava","lcd":"https://lcd.kava.dragonstake.io","gas":100000,"fees":50, "memo":"@InterchainWalletBot by KiraEx.com, LCD by DragonStake.io"}
+luna_PROPS: {"denom":"uluna","amount":50000,"index":118,"prefix":"terra","lcd":"https://lcd.terra.bigdipper.live","gas":100000,"fees":50}
+uluna_PROPS: {"denom":"uluna","amount":50000,"index":118,"prefix":"terra","lcd":"https://lcd.terra.bigdipper.live","gas":100000,"fees":50}
+x3ngm_PROPS: {"denom":"x3ngm","amount":10000,"index":118,"prefix":"emoney","lcd":"https://lilmermaid.validator.network/light","gas":100000,"fees":50}
+x2teur_PROPS: {"denom":"x2eur","amount":10000,"index":118,"prefix":"emoney","lcd":"https://lilmermaid.validator.network/light","gas":100000,"fees":50}
+x2tchf_PROPS: {"denom":"x2chf","amount":10000,"index":118,"prefix":"emoney","lcd":"https://lilmermaid.validator.network/light","gas":100000,"fees":50}
+tcommercio_PROPS: {"denom":"ucommercio","amount":10000,"index":118,"prefix":"did:com:","lcd":"https://lcd-testnet.commercio.network","gas":100000,"fees":50}
 
 ```
-muon_PROPS: {"denom":"muon","amount":50000,"index":118,"prefix":"cosmos","lcd":"https://lcd.gaia.bigdipper.live","gas":100000,"fees":50000}
-cyb_PROPS: {"denom":"cyb","amount":50000,"index":118,"prefix":"cyber","lcd":"http://93.125.26.210:27117","gas":100000,"fees":50000}
-atom_PROPS: {"denom":"uatom","amount":50000,"index":118,"prefix":"cosmos","lcd":"https://lcd.nylira.net","gas":100000,"fees":50000}
-tree_PROPS: {"denom":"utree","amount":50000,"index":118,"prefix":"xrn:","lcd":"https://regen-lcd.chorus.one:1317","gas":100000,"fees":50000}
+
+> Exmplict Use Examples
+```
+tip 1 $TSENT --index=118 --prefix=sent --lcd=https://lcd.turing.dragonstake.io
+show my $IRIS balance --denom=iris-atto --index=118 --prefix=faa --lcd=http://iris_testnet.nodeateam.com:1317
 ```
  
 > Function code
-
 ```
 Code entry type -> .zip -> (execute ./publish.sh script to generate)
 Runtime: .NET Core 2.1 (C#/PowerShell)
@@ -79,7 +94,7 @@ Handler: ICFaucet::ICFaucet.Function::FunctionHandler
 
 ## Get Tokens Example Use
 > Join: `https://t.me/cosmosproject` and `https://t.me/kirainterex`
-> Post a message: `Give me $MUON cosmos1k5wrdtmd5ngqx4pngwtlmlahv8yz7gk2tccgqg` on any of the chats
+> Post a message: `Give me $MUON` on any of the chats
 
 > Accepted Flags
 ```
@@ -87,10 +102,11 @@ Handler: ICFaucet::ICFaucet.Function::FunctionHandler
 --network=<chain_id>
 --index=<coin_index> //
 --denom=<coin_denom>
+--address=<wallet_address>
 ```
 
 > Example explicit message: `Give me $muon cosmos1k5wrdtmd5ngqx4pngwtlmlahv8yz7gk2tccgqg --index=118 --lcd=https://lcd.gaia.bigdipper.live`
-> Example implicit message: `Give me $muon cosmos1k5wrdtmd5ngqx4pngwtlmlahv8yz7gk2tccgqg` will use default parameters
+> Example implicit message: `Give me $muon` will use default parameters
 
 > Coin indexes can be found [here](https://github.com/satoshilabs/slips/blob/master/slip-0044.md)
 

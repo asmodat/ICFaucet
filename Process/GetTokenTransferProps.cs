@@ -19,19 +19,18 @@ namespace ICFaucet
 {
     public partial class Function
     {
-        private async Task<TokenProps> GetTokenTransferProps(Chat chat, int replyMessageId, string text, long from, string to) // verify that user is a part of the master chat
+        public static TokenProps GetTokenPropsFromTextCommand(string text)
         {
             var args = text.Split(" ");
             var cliArgs = CLIHelper.GetNamedArguments(args);
 
             var token = args.FirstOrDefault(x => x.StartsWith("$"))?.TrimStart("$");
-            var baseName = token?.ToUpper();
 
             if (token.IsNullOrEmpty())
                 token = cliArgs.GetValueOrDefault("token");
 
             token = token?.ToLower();
-            var propsVar = Environment.GetEnvironmentVariable($"{token?.ToLower()}_PROPS");
+            var propsVar = Environment.GetEnvironmentVariable($"{token}_PROPS");
             TokenProps props;
 
             if (!propsVar.IsNullOrEmpty())
@@ -39,16 +38,35 @@ namespace ICFaucet
             else
                 props = new TokenProps();
 
-            if (token.IsNullOrWhitespace() || token.Length < 2 || token.Length > 10) // validate token name
+            props.name = token;
+
+            var lcd = cliArgs.GetValueOrDefault("lcd");
+            if (!lcd.IsNullOrWhitespace())
+                props.lcd = lcd;
+
+            props.fees = cliArgs.GetValueOrDefault("fees").ToBigIntOrDefault(props.fees);
+            props.gas = cliArgs.GetValueOrDefault("gas", cliArgs.GetValueOrDefault("gass")).ToBigIntOrDefault(props.gas);
+
+            return props;
+        }
+
+        private async Task<TokenProps> GetTokenTransferProps(Chat chat, int replyMessageId, string text, long from, string to) // verify that user is a part of the master chat
+        {
+            var args = text.Split(" ");
+            var cliArgs = CLIHelper.GetNamedArguments(args);
+
+            var props = GetTokenPropsFromTextCommand(text);
+            var baseName = props?.name?.ToUpper();
+
+            if (props.name.IsNullOrWhitespace() || props.name.Length < 2 || props.name.Length > 10) // validate token name
             {
-                await _TBC.SendTextMessageAsync(text: $"Token name `${token ?? "undefined"}` is invalid.\nCheck description to see allowed parameters.", 
+                await _TBC.SendTextMessageAsync(text: $"Token name `${props.name ?? "undefined"}` is invalid.\nCheck description to see allowed parameters.", 
                     chatId: chat, 
                     replyToMessageId: replyMessageId, parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown);
                 return null;
             }
 
             props.amount = (args.FirstOrDefault(x => x.Trim().IsDigits()).Trim() ?? cliArgs.GetValueOrDefault("amount")).ToLongOrDefault(0);
-            props.name = token;
 
             if (props.index < 0 || props.index > 99999999)
                 props.index = (cliArgs.GetValueOrDefault("index")).ToIntOrDefault(BitcoinEx.GetCoinIndex(baseName));
@@ -66,8 +84,6 @@ namespace ICFaucet
                 props.address = to;
             }
 
-            props.fees = cliArgs.GetValueOrDefault("fees").ToLongOrDefault(props.fees);
-            props.gas = cliArgs.GetValueOrDefault("gas", cliArgs.GetValueOrDefault("gass")).ToLongOrDefault(props.gas);
             props.prefix = cliArgs.GetValueOrDefault("prefix") ?? props.prefix;
 
             if (props.prefix.IsNullOrWhitespace())
@@ -98,10 +114,6 @@ namespace ICFaucet
             fromAcc.InitializeWithMnemonic(fromUA.GetSecret());
             props.origin = fromAcc.CosmosAddress;
 
-            var lcd = cliArgs.GetValueOrDefault("lcd");
-            if (!lcd.IsNullOrWhitespace())
-                props.lcd = lcd;
-
             var client = new CosmosHub(lcd: props.lcd, timeoutSeconds: _cosmosHubClientTimeout);
             node_info nodeInfo;
             try
@@ -122,20 +134,14 @@ namespace ICFaucet
                 network = props.network;
             props.network = network;
 
-            if (props.network.IsNullOrWhitespace() || props.network.Length <= 1 || props.network.Length >= 20)
+            if (props.network.IsNullOrWhitespace() || props.network.Length <= 1)
             {
                 await _TBC.SendTextMessageAsync(text: $"*network* flag `{props.network ?? "undefined"}` is invalid.\nCheck description to see allowed parameters.", 
                     chatId: chat, replyToMessageId: replyMessageId, parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown);
                 return null;
             }
 
-            var denom = cliArgs.GetValueOrDefault("denom");
-            if (!denom.IsNullOrWhitespace())
-                denom = props?.denom;
-            if (denom.IsNullOrEmpty())
-                denom = props.name.ToLower();
-            props.denom = denom;
-
+            props.denom = cliArgs.GetValueOrDefault("denom") ?? props.denom ?? props.name.ToLower();
             return props;
         }
     }

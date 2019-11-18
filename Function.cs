@@ -45,9 +45,10 @@ namespace ICFaucet
         public static SemaphoreSlim _ssMsgLocker = new SemaphoreSlim(1, 1);
         public static SemaphoreSlim _ssCbqLocker = new SemaphoreSlim(1, 1);
         private SecureString _mnemonic;
-        private readonly string _version = "v0.1.3";
+        private readonly string _version = "v0.1.6";
         private string _bucket;
         private int _cosmosHubClientTimeout;
+        private int _lambdaTime;
         private Stopwatch _sw;
 
         public Function()
@@ -56,7 +57,7 @@ namespace ICFaucet
             _S3 = new S3Helper();
             _messages = new List<Message>();
             _callbacks = new List<CallbackQuery>();
-            _sw = Stopwatch.StartNew();
+            
         }
 
 #if (TEST)
@@ -82,7 +83,7 @@ namespace ICFaucet
 
         public async Task FunctionHandler(ILambdaContext context)
         {
-            var sw = Stopwatch.StartNew();
+            _sw = Stopwatch.StartNew();
             _context = context;
             _logger = _context.Logger;
             _logger.Log($"{context?.FunctionName} => {nameof(FunctionHandler)} => Started");
@@ -92,6 +93,7 @@ namespace ICFaucet
             _cosmosHubClientTimeout = Environment.GetEnvironmentVariable("HUB_CLIENT_TIMEOUT").ToIntOrDefault(7);
             _maxMessageAge = Environment.GetEnvironmentVariable("MAX_MESSAGE_AGE").ToDoubleOrDefault(24 * 3600);
             _bucket = Environment.GetEnvironmentVariable("BUCKET_NAME");
+            _lambdaTime = Environment.GetEnvironmentVariable("LAMBDA_TIME").ToIntOrDefault((15 * 60 * 1000) - 5000);
 
             var secretName = Environment.GetEnvironmentVariable("SECRET_NAME") ?? "KiraFaucetBot";
 
@@ -122,15 +124,30 @@ namespace ICFaucet
             try
             {
                 Log($"Processing...");
+                var finalize = false;
                 while (true)
                 {
-                    if(_sw.ElapsedMilliseconds >= ((15 * 60 * 1000) - 3000))
+#if (PUBLISH)
+                    if (!finalize && _sw.ElapsedMilliseconds >= _lambdaTime)
+                    {
                         _TBC.StopReceiving();
+                        finalize = true;
+                        _logger.Log($"Finalizing, elapsed {_sw.ElapsedMilliseconds} / {_lambdaTime} [ms] ...");
+                    }
+#endif
 
                     if (_messages.IsNullOrEmpty() && _callbacks.IsNullOrEmpty())
                     {
-                        await Task.Delay(100);
-                        continue;
+                        if (finalize)
+                        {
+                            _logger.Log($"Lambda was finalized gracefully within {_lambdaTime - _sw.ElapsedMilliseconds} ms.");
+                            return;
+                        }
+                        else
+                        {
+                            await Task.Delay(100);
+                            continue;
+                        }
                     }
 
                     Message[] msgArr = null;
@@ -141,14 +158,31 @@ namespace ICFaucet
                     });
 
                     var t0 = ParallelEx.ForEachAsync(msgArr, async msg => {
-                        var user = msg.From;
-                        var replyUser = msg.ReplyToMessage?.From;
+                        
+                        async Task ProcessUser(Message m)
+                        {
+                            var user = m.From;
+                            var replyUser = m.ReplyToMessage?.From;
 
-                        if (user != null)
-                            await UpdateUserData(user);
+                            if (user != null)
+                                await UpdateUserData(user);
 
-                        if (replyUser != null && user.Id != replyUser.Id)
-                            await UpdateUserData(replyUser);
+                            if (replyUser != null && user?.Id != replyUser.Id)
+                                await UpdateUserData(replyUser);
+                        }
+
+#if (TEST)
+                        await ProcessUser(msg);
+#elif (PUBLISH)
+                        try
+                        {
+                            await ProcessUser(msg);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.Log($"[USR ERROR] => Filed ('{msg?.Chat?.Id ?? 0}') to save user status: '{ex.JsonSerializeAsPrettyException(Newtonsoft.Json.Formatting.Indented)}'");
+                        }
+#endif
                     });
 
                     var t1 = ParallelEx.ForEachAsync(msgArr, async msg =>
@@ -162,7 +196,7 @@ namespace ICFaucet
                         }
                         catch (Exception ex)
                         {
-                            _logger.Log($"[ERROR] => Filed ('{msg?.Chat?.Id ?? 0}') to process message ({msg?.MessageId}): '{ex.JsonSerializeAsPrettyException(Newtonsoft.Json.Formatting.Indented)}'");
+                            _logger.Log($"[MSG ERROR] => Filed ('{msg?.Chat?.Id ?? 0}') to process message ({msg?.MessageId}): '{ex.JsonSerializeAsPrettyException(Newtonsoft.Json.Formatting.Indented)}'");
                             await _TBC.SendTextMessageAsync(chatId: msg.Chat,
                                 $"Something went wrong, visit {await GetMasterChatInviteLink()} to find help.", 
                                 replyToMessageId: msg.MessageId,
@@ -188,7 +222,7 @@ namespace ICFaucet
                         }
                         catch (Exception ex)
                         {
-                            _logger.Log($"[ERROR] => Filed ('{cbq.Message?.Chat?.Id ?? 0}') to process callback ({cbq.Id}): '{ex.JsonSerializeAsPrettyException(Newtonsoft.Json.Formatting.Indented)}'");
+                            _logger.Log($"[CBQ ERROR] => Filed ('{cbq.Message?.Chat?.Id ?? 0}') to process callback ({cbq.Id}): '{ex.JsonSerializeAsPrettyException(Newtonsoft.Json.Formatting.Indented)}'");
                             await _TBC.SendTextMessageAsync(chatId: cbq.Message.Chat,
                                 $"Something went wrong, visit {await GetMasterChatInviteLink()} to find help.",
                                 parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown);
@@ -201,10 +235,9 @@ namespace ICFaucet
             }
             finally
             {
-                _logger.Log($"{context?.FunctionName} => {nameof(FunctionHandler)} => Stopped, Eveluated within: {sw.ElapsedMilliseconds} [ms]");
+                _logger.Log($"{context?.FunctionName} => {nameof(FunctionHandler)} => Stopped, Eveluated within: {_sw.ElapsedMilliseconds} [ms]");
             }
         }
-
 
         public async Task UpdateUserData(User user)
         {
@@ -213,6 +246,7 @@ namespace ICFaucet
 
             var userKey = $"users/{user.Username.SHA256().ToHexString()}";
             var newUser = user.JsonSerialize();
+            
             if (await _S3.ObjectExistsAsync(_bucket, key: userKey))
             {
                var oldUser = await _S3.DownloadTextAsync(_bucket, userKey);
@@ -220,7 +254,7 @@ namespace ICFaucet
                 return;
             }
             
-            await _S3.UploadTextAsync(_bucket, userKey, user.JsonSerialize());
+            await _S3.UploadTextAsync(_bucket, userKey, newUser);
         }
 
         public async Task<User> TryGetUserByUsername(string username)

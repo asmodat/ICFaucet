@@ -1,6 +1,9 @@
-﻿using System.Threading.Tasks;
+﻿using System;
+using System.Threading.Tasks;
 using AsmodatStandard.Extensions;
 using AsmodatStandard.Extensions.Collections;
+using ICWrapper.Cosmos.CosmosHub;
+using ICWrapper.Cosmos.CosmosHub.Models;
 using Telegram.Bot.Types;
 namespace ICFaucet
 {
@@ -11,15 +14,16 @@ namespace ICFaucet
             var chat = c.Message.Chat;
             var data = c.Data;
             var user = c.From;
+            var message = c?.Message;
             var responseToUser = c?.Message?.ReplyToMessage?.From;
-
-            if (responseToUser?.Id != user.Id)
-                return false; //ignore callbacks from users to whom response was not made
 
             if (data.IsNullOrEmpty())
                 return false;
 
             var args = data.Split(" ");
+
+            if (responseToUser?.Id != user.Id)
+                return false; //ignore callbacks from users to whom response was not made unless it's a query Hash tx
 
             switch (args[0])
             {

@@ -73,38 +73,59 @@ namespace ICFaucet
                 case nameof(OptionKeys.faucetHelp):
                     {
                         await _TBC.SendTextMessageAsync(chatId: chat,
-@"Kira Faucet allows you to claim tokens from any `cosmos-sdk` based project.
+@"*Kira Faucet allows you to claim tokens from any* `cosmos-sdk` *based project*.
 
-To interact with the faucet you must be a member of @kirainterex
+_To interact with the faucet you must be a member of @kirainterex_
 
-To receive tokens send following command:
-`Give me $<token_name> <account_address> --index=<coin_index> --lcd=<lcd_url_address>`
+To receive tokens use:
+➡️ `get me $<token_name>`
 
-To deposit tokens join send following command:
-`Give me $<token_name> deposit --index=<coin_index> --prefix=<wallet_prefix>`
+To deposit tokens to the faucet:
+➡️ `get me $<token_name> deposit`
 
-To register new token ping @asmodat, and use faucet with implicit commands:
-`Give me $<token_name> <account_address>`
-`Give me $<token_name> deposit`", 
-parseMode: ParseMode.Default);
+Optional parameters:
+➡️ `--index=<coin_index>` (see coin [registry](https://github.com/satoshilabs/slips/blob/master/slip-0044.md))
+➡️ `--addres=<wallet_address>` 
+➡️ `--prefix=<address_prefix>` (optional if `addres` specified)
+➡️ `--lcd=<lcd_url_address>`
+➡️ `--network=<chain_id>` (optional if `lcd` specified)
+
+_To register *new* token and use faucet with implicit commands (without need to specify optional parameters) PM @asmodat_",
+disableWebPagePreview: true, parseMode: ParseMode.Markdown);
                         return;
                     }
                 case nameof(OptionKeys.txHelp):
                     {
                         await _TBC.SendTextMessageAsync(chatId: chat,
-@"Kira Tip Bot allows you to transfer tokens of any `cosmos-sdk` project.
+@"*Kira Tip Bot allows you to transfer tokens of any* `cosmos-sdk` *project.*
 
-To interact with the tip bot you must be a member of @kirainterex
+_To interact with the tip bot you must be a member of @kirainterex_
 
-To transfer tokens with explicit commands:
-`tip @<username> <amount> $<token_name> --prefix=<wallet_prefix> --index=<coin_index> --lcd=<lcd_url_address>`
-Reply to -> `tip <amount> $<token_name> --index=<coin_index> --lcd=<lcd_url_address>`
-`tx <amount> $<token_name> <wallet_address> --index=<coin_index> --lcd=<lcd_url_address>`
+To transfer tokens use:
+➡️ Reply to -> `tip <amount> $<token_name>`
+➡️ `tx @<username> <amount> $<token_name>`
 
-To register new token ping @asmodat, and use faucet with implicit commands:
-`tip @<username> <amount> $<token_name>`
-`tx <amount> $<token_name> <wallet_address>`", 
-parseMode: ParseMode.Default);
+To preview account:
+➡️ `show my $<token_name> address`
+➡️ `show my $<token_name> balance`
+
+To query transaction hash:
+➡️ Reply to -> `query tx`
+➡️ `query tx <tx_hash>`
+
+Optional parameters:
+➡️ `--index=<coin_index>` ([registry](https://github.com/satoshilabs/slips/blob/master/slip-0044.md))
+➡️ `--addres=<wallet_address>` 
+➡️ `--prefix=<address_prefix>` (optional if `addres` specified)
+➡️ `--lcd=<lcd_url_address>`
+➡️ `--network=<chain_id>` (optional if `lcd` specified)
+➡️ `--denom=<token_denomination>`
+➡️ `--fee=<fee_amount>`
+➡️ `--gas=<gas_amount>`
+➡️ `--amount='<amount>'`
+
+_To register *new* token and use faucet with implicit commands (without need to specify optional parameters) PM @asmodat_",
+disableWebPagePreview: true, parseMode: ParseMode.Markdown);
                         return;
                     }
                 case nameof(OptionKeys.tradeHelp):
@@ -120,6 +141,5 @@ parseMode: ParseMode.Default);
                     }
             }
         }
-
     }
 }

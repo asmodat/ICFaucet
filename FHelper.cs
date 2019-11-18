@@ -1,23 +1,10 @@
 ﻿using System;
-using System.Diagnostics;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using AsmodatStandard.Extensions;
 using AsmodatStandard.Extensions.Collections;
-using Amazon.Lambda.Core;
-
-using AsmodatStandard.Networking;
-//using AWSWrapper.SM;
+using ICFaucet.Models;
 using Telegram.Bot;
-using Amazon.Lambda.RuntimeSupport;
-using Amazon.Lambda.Serialization.Json;
-
-using System.Collections.Generic;
-using System.Linq;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
-using Amazon.Lambda.APIGatewayEvents;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 
@@ -62,6 +49,18 @@ namespace ICFaucet
             return false;
         }
 
+        public static async Task<User> TryGetChatMember(this TelegramBotClient TBC, ChatId chat, int user)
+        {
+            try
+            {
+                return (await TBC.GetChatMemberAsync(chat, user))?.User;
+            }
+            catch (Telegram.Bot.Exceptions.ApiRequestException ex)
+            {
+                throw null;
+            }
+        }
+
         public static async Task<bool> IsChatMember(this TelegramBotClient TBC, ChatId chat, User user)
         {
             ChatMember member;
@@ -87,6 +86,31 @@ namespace ICFaucet
 
             var name = $"{user.FirstName?.Trim() ?? ""} {user.FirstName?.Trim() ?? ""}".Trim();
             return $"[{name}](tg://user?id={user.Id})";
+        }
+
+        public static string[] GetAllLCDs()
+        {
+            var lcds = new List<string>();
+            foreach (System.Collections.DictionaryEntry env in Environment.GetEnvironmentVariables())
+            {
+                var propsKey = (string)env.Key;
+                var propsVar = (string)env.Value;
+
+                if (propsKey.IsNullOrWhitespace() || propsVar.IsNullOrWhitespace() || !propsKey.EndsWith("_PROPS"))
+                    continue;
+
+                TokenProps props = null;
+
+                if (!propsVar.IsNullOrEmpty())
+                    props = propsVar.JsonDeserialize<TokenProps>();
+
+                if (props == null || props.lcd.IsNullOrWhitespace())
+                    continue;
+
+                lcds.Add(props.lcd);
+            }
+
+            return lcds.ToArray();
         }
     }
 }
